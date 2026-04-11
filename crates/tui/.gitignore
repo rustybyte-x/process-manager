@@ -1,0 +1,33 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock
+
+# Keep Cargo.lock for binaries, ignore for libraries if desired
+#! Cargo.lock
+
+# IDEs
+.vscode/
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+*.swp
+
+# Coverage / profiling
+*.prof*
+*.gc*
+
+# TUI artifacts (optional)
+*.out
+
+# dotenv
+.env

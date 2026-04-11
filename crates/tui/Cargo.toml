@@ -1,0 +1,15 @@
+[package]
+name = "process-manager"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "pm"
+path = "src/main.rs"
+
+[dependencies]
+color-eyre = "0.6"
+crossterm = "0.28"
+ratatui = "0.30.0"
+process_manager_core = { path = "../core" }
