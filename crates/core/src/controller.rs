@@ -98,25 +98,31 @@ pub fn dispatch(
             }
 
             UiMode::Command => {
-                let input = app.command_input.trim().to_string();
+                let raw_input = app.command_input.trim().to_string();
 
-                if input.is_empty() {
+                if raw_input.is_empty() {
                     app.mode = UiMode::Normal;
                     app.set_status(StatusLevel::Warning, "command is empty");
                     return Ok(());
                 }
 
-                let command = CommandLine::parse(&input)?;
-                process_manager.start_process(&command)?;
+                let command = CommandLine::parse(&raw_input)?;
 
-                app.command_input.clear();
-                app.mode = UiMode::Normal;
+                match process_manager.start_process(&command) {
+                    Ok(()) => {
+                        app.command_input.clear();
+                        app.mode = UiMode::Normal;
 
-                let processes = process_manager.list_processes()?;
-                app.set_processes(processes);
-                app.mark_refreshed();
+                        let processes = process_manager.list_processes()?;
+                        app.set_processes(processes);
+                        app.mark_refreshed();
 
-                app.set_status(StatusLevel::Success, format!("started: {input}"));
+                        app.set_status(StatusLevel::Success, format!("started: {raw_input}"));
+                    }
+                    Err(err) => {
+                        app.set_status(StatusLevel::Error, format!("failed to start: {err}"));
+                    }
+                }
             }
         },
 

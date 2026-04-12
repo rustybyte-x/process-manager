@@ -38,9 +38,18 @@ pub fn next_action(app: &App) -> Result<Option<Action>> {
             _ => None,
         },
 
-        UiMode::Filter | UiMode::Command => match key.code {
+        UiMode::Filter => match key.code {
             KeyCode::Esc => Some(Action::LeaveInputMode),
             KeyCode::Enter => Some(Action::SubmitInput),
+            KeyCode::Backspace => Some(Action::Backspace),
+            KeyCode::Char(c) => Some(Action::InputChar(c)),
+            _ => None,
+        },
+
+        UiMode::Command => match key.code {
+            KeyCode::Esc => Some(Action::LeaveInputMode),
+            KeyCode::Enter => Some(Action::SubmitInput),
+            KeyCode::Tab => Some(Action::AutocompleteCommand),
             KeyCode::Backspace => Some(Action::Backspace),
             KeyCode::Char(c) => Some(Action::InputChar(c)),
             _ => None,

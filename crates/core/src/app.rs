@@ -1,55 +1,38 @@
 use std::time::{Duration, Instant};
 
-use crate::{action::Action, process::ProcessEntry};
+use crate::{
+    action::Action,
+    command::{complete_command, suggest_commands},
+    process::ProcessEntry,
+};
 
 /// Describes how user input should currently be interpreted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum UiMode {
-    /// Normal navigation mode.
     #[default]
     Normal,
-
-    /// Filter input mode.
     Filter,
-
-    /// Command input mode.
     Command,
-
-    /// Kill confirmation mode.
     ConfirmKill,
 }
 
 /// Defines the active sort mode for the process list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SortMode {
-    /// Sort processes by name in ascending order.
     #[default]
     NameAsc,
-
-    /// Sort processes by PID in ascending order.
     PidAsc,
-
-    /// Sort processes by CPU usage in descending order.
     CpuDesc,
-
-    /// Sort processes by memory usage in descending order.
     MemoryDesc,
 }
 
 /// Semantic status levels used by the UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum StatusLevel {
-    /// Informational status.
     #[default]
     Info,
-
-    /// Successful operation status.
     Success,
-
-    /// Warning status.
     Warning,
-
-    /// Error status.
     Error,
 }
 
@@ -68,11 +51,6 @@ pub struct App {
     pub filtered_indices: Vec<usize>,
 
     /// The currently selected row within `filtered_indices`.
-    ///
-    /// # Invariant
-    ///
-    /// - If `filtered_indices` is empty, this value is treated as neutral.
-    /// - Otherwise, this value should always be less than `filtered_indices.len()`.
     pub selected: usize,
 
     /// Indicates whether the application should exit.
@@ -124,7 +102,9 @@ impl App {
             command_input: String::new(),
             mode: UiMode::Normal,
             sort_mode: SortMode::NameAsc,
-            status: String::from("r refresh | d kill | / filter | : command | s sort | q quit"),
+            status: String::from(
+                "r refresh | d kill | / filter | : command | Tab autocomplete | q quit",
+            ),
             status_level: StatusLevel::Info,
             auto_refresh: true,
             refresh_interval: Duration::from_secs(2),
@@ -190,6 +170,14 @@ impl App {
                 }
             },
 
+            Action::AutocompleteCommand => {
+                if self.mode == UiMode::Command {
+                    if let Some(completed) = complete_command(&self.command_input) {
+                        self.command_input = completed;
+                    }
+                }
+            }
+
             Action::Quit => self.should_quit = true,
 
             Action::Tick | Action::Refresh | Action::KillSelected | Action::SubmitInput => {}
@@ -212,9 +200,18 @@ impl App {
         self.status = message.into();
     }
 
-    /// Replaces the current process snapshot and rebuilds all derived view state.
+    /// Returns the current command suggestions for the command input buffer.
     ///
-    /// This includes sorting, filtering, and clamping the current selection.
+    /// Suggestions are only shown in command mode to avoid mixing command
+    /// concerns with other input contexts.
+    pub fn command_suggestions(&self) -> Vec<&'static str> {
+        if self.mode != UiMode::Command {
+            return Vec::new();
+        }
+
+        suggest_commands(&self.command_input)
+    }
+
     pub fn set_processes(&mut self, mut processes: Vec<ProcessEntry>) {
         self.sort_processes(&mut processes);
         self.processes = processes;
@@ -222,23 +219,19 @@ impl App {
         self.clamp_selection();
     }
 
-    /// Returns the currently selected process within the filtered view.
     pub fn selected_process(&self) -> Option<&ProcessEntry> {
         let process_index = *self.filtered_indices.get(self.selected)?;
         self.processes.get(process_index)
     }
 
-    /// Returns the PID of the currently selected process, if any.
     pub fn selected_pid(&self) -> Option<u32> {
         self.selected_process().map(|p| p.pid)
     }
 
-    /// Returns the name of the currently selected process, if any.
     pub fn selected_name(&self) -> Option<&str> {
         self.selected_process().map(|p| p.name.as_str())
     }
 
-    /// Rebuilds the filtered process view from the current process list and filter input.
     pub fn rebuild_filter(&mut self) {
         let needle = self.filter_input.trim().to_lowercase();
 
@@ -257,7 +250,6 @@ impl App {
         self.clamp_selection();
     }
 
-    /// Ensures the selected row stays within the visible filtered range.
     pub fn clamp_selection(&mut self) {
         if self.filtered_indices.is_empty() {
             self.selected = 0;
@@ -266,7 +258,6 @@ impl App {
         }
     }
 
-    /// Reapplies the current sort mode to the existing process list.
     pub fn apply_sort(&mut self) {
         let mut processes = std::mem::take(&mut self.processes);
         self.sort_processes(&mut processes);
@@ -275,7 +266,6 @@ impl App {
         self.clamp_selection();
     }
 
-    /// Sorts a mutable process slice according to the active [`SortMode`].
     fn sort_processes(&self, processes: &mut [ProcessEntry]) {
         match self.sort_mode {
             SortMode::NameAsc => {
@@ -297,7 +287,6 @@ impl App {
         }
     }
 
-    /// Selects the next visible process and wraps at the end of the filtered view.
     fn select_next(&mut self) {
         if self.filtered_indices.is_empty() {
             self.selected = 0;
@@ -307,7 +296,6 @@ impl App {
         self.selected = (self.selected + 1) % self.filtered_indices.len();
     }
 
-    /// Selects the previous visible process and wraps at the beginning of the filtered view.
     fn select_previous(&mut self) {
         if self.filtered_indices.is_empty() {
             self.selected = 0;

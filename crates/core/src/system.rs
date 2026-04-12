@@ -21,9 +21,6 @@ impl SystemProcessManager {
 }
 
 impl ProcessManager for SystemProcessManager {
-    /// Retrieves the current process snapshot from the system.
-    ///
-    /// The snapshot is refreshed before collecting process entries.
     fn list_processes(&mut self) -> Result<Vec<ProcessEntry>, Error> {
         self.system.refresh_all();
 
@@ -44,15 +41,6 @@ impl ProcessManager for SystemProcessManager {
         Ok(processes)
     }
 
-    /// Attempts to terminate the process with the given PID.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::ProcessNotFound`] if the PID does not exist in the
-    /// current process snapshot.
-    ///
-    /// Returns [`Error::OperationFailed`] if the backend reported that the
-    /// process could not be terminated.
     fn kill_process(&mut self, pid: u32) -> Result<(), Error> {
         self.system.refresh_all();
 
@@ -69,7 +57,10 @@ impl ProcessManager for SystemProcessManager {
         }
     }
 
-    /// Starts a new process using the provided parsed command line.
+    /// Starts a new child process without blocking the TUI.
+    ///
+    /// The spawned process is detached from the application's control flow
+    /// after creation. Errors reported here indicate startup failures only.
     fn start_process(&mut self, command: &CommandLine) -> Result<(), Error> {
         std::process::Command::new(&command.program)
             .args(&command.args)

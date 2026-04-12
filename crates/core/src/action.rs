@@ -50,6 +50,9 @@ pub enum Action {
     /// Clear the currently active input buffer.
     ClearInput,
 
+    /// Complete the current command input if a known suggestion matches.
+    AutocompleteCommand,
+
     /// Request graceful application shutdown.
     Quit,
 }

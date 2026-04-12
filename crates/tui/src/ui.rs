@@ -3,10 +3,10 @@ use process_manager_core::{
     process::ProcessStatus,
 };
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Flex, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState, Wrap},
+    Frame,
 };
 
 /// Renders the complete user interface for the current application state.
@@ -17,7 +17,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(12),
-            Constraint::Length(3),
+            Constraint::Length(5),
             Constraint::Length(3),
         ])
         .split(frame.area());
@@ -131,17 +131,40 @@ fn render_details(frame: &mut Frame, app: &App, area: Rect) {
 
 /// Renders the current input area or mode hint.
 fn render_input(frame: &mut Frame, app: &App, area: Rect) {
-    let (title, content) = match app.mode {
-        UiMode::Normal => (
-            "Input",
-            "Press / to filter, : to start a process, d to kill selected, s to sort",
-        ),
-        UiMode::Filter => ("Filter", app.filter_input.as_str()),
-        UiMode::Command => ("Command", app.command_input.as_str()),
-        UiMode::ConfirmKill => ("Input", "Confirm dialog is active"),
+    let content = match app.mode {
+        UiMode::Normal => {
+            "Press / to filter, : to start a process, d to kill selected, s to sort".to_string()
+        }
+        UiMode::Filter => app.filter_input.clone(),
+        UiMode::Command => {
+            let suggestions = app.command_suggestions();
+
+            if suggestions.is_empty() {
+                format!(
+                    ": {}\n\nExamples: sleep 60 | yes | python3 -m http.server 8000 | open -a TextEdit",
+                    app.command_input
+                )
+            } else {
+                format!(
+                    ": {}\n\nSuggestions: {}\nPress Tab to autocomplete",
+                    app.command_input,
+                    suggestions.join(", ")
+                )
+            }
+        }
+        UiMode::ConfirmKill => "Confirm dialog is active".to_string(),
     };
 
-    let widget = Paragraph::new(content).block(Block::default().borders(Borders::ALL).title(title));
+    let title = match app.mode {
+        UiMode::Normal => "Input",
+        UiMode::Filter => "Filter",
+        UiMode::Command => "Command",
+        UiMode::ConfirmKill => "Input",
+    };
+
+    let widget = Paragraph::new(content)
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .wrap(Wrap { trim: true });
 
     frame.render_widget(widget, area);
 }
