@@ -12,28 +12,46 @@ mod ui;
 /// Starts the terminal application and installs error reporting.
 fn main() -> Result<()> {
     color_eyre::install()?;
-    ratatui::run(app)?;
-    Ok(())
+
+    let terminal = ratatui::init();
+    let result = app(terminal);
+    ratatui::restore();
+
+    result
 }
 
 /// Runs the main TUI event loop.
 ///
-/// The loop repeatedly renders the current state, collects the next action,
-/// and dispatches it through the controller.
-fn app(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
+/// The loop redraws the screen only when the application state has changed.
+/// This keeps CPU usage lower than redrawing on every polling cycle.
+fn app(mut terminal: ratatui::DefaultTerminal) -> Result<()> {
     let mut app = App::new();
     let mut process_manager = SystemProcessManager::new();
 
-    // Load the initial process snapshot before the first frame is rendered.
+    // Force the first frame to be rendered after the initial refresh.
+    let mut dirty = true;
+
     dispatch(&mut app, &mut process_manager, Action::Refresh)?;
 
     while !app.should_quit {
-        terminal.draw(|frame| ui::render(frame, &app))?;
+        if dirty {
+            terminal.draw(|frame| ui::render(frame, &app))?;
+            dirty = false;
+        }
 
         if let Some(action) = events::next_action(&app)? {
-            if let Err(err) = dispatch(&mut app, &mut process_manager, action) {
-                app.set_status(StatusLevel::Error, format!("error: {err}"));
-                app.mode = UiMode::Normal;
+            match dispatch(&mut app, &mut process_manager, action) {
+                Ok(()) => {
+                    // Any processed action may have changed state or triggered a refresh.
+                    dirty = true;
+                }
+                Err(err) => {
+                    // Surface operational failures in the status bar instead of
+                    // aborting the TUI session.
+                    app.set_status(StatusLevel::Error, format!("error: {err}"));
+                    app.mode = UiMode::Normal;
+                    dirty = true;
+                }
             }
         }
     }

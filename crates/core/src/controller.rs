@@ -1,16 +1,13 @@
 use crate::{
     action::Action,
     app::{App, SortMode, StatusLevel, UiMode},
-    command::CommandLine,
+    command::{CommandLine, CommandMode},
     error::Error,
     manager::ProcessManager,
 };
 
 /// Applies an [`Action`] by coordinating pure state transitions with
 /// side effects from the active [`ProcessManager`].
-///
-/// This function acts as the boundary between UI intent and system-level
-/// process operations.
 pub fn dispatch(
     app: &mut App,
     process_manager: &mut impl ProcessManager,
@@ -109,7 +106,7 @@ pub fn dispatch(
                 let command = CommandLine::parse(&raw_input)?;
 
                 match process_manager.start_process(&command) {
-                    Ok(()) => {
+                    Ok(pid) => {
                         app.command_input.clear();
                         app.mode = UiMode::Normal;
 
@@ -117,7 +114,20 @@ pub fn dispatch(
                         app.set_processes(processes);
                         app.mark_refreshed();
 
-                        app.set_status(StatusLevel::Success, format!("started: {raw_input}"));
+                        match command.mode {
+                            CommandMode::Background => {
+                                app.set_status(
+                                    StatusLevel::Success,
+                                    format!("started in background: {raw_input} (pid {pid})"),
+                                );
+                            }
+                            CommandMode::Terminal => {
+                                app.set_status(
+                                    StatusLevel::Success,
+                                    format!("opened in terminal: {raw_input}"),
+                                );
+                            }
+                        }
                     }
                     Err(err) => {
                         app.set_status(StatusLevel::Error, format!("failed to start: {err}"));

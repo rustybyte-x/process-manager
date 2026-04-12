@@ -15,10 +15,11 @@ pub fn render(frame: &mut Frame, app: &App) {
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Min(12),
-            Constraint::Length(5),
-            Constraint::Length(3),
+            Constraint::Length(3), // title
+            Constraint::Min(12),   // main content
+            Constraint::Length(5), // input
+            Constraint::Length(3), // help
+            Constraint::Length(3), // status
         ])
         .split(frame.area());
 
@@ -36,7 +37,8 @@ pub fn render(frame: &mut Frame, app: &App) {
     render_process_table(frame, app, body[0]);
     render_details(frame, app, body[1]);
     render_input(frame, app, outer[2]);
-    render_status(frame, app, outer[3]);
+    render_help(frame, app, outer[3]);
+    render_status(frame, app, outer[4]);
 
     if app.mode == UiMode::ConfirmKill {
         render_kill_dialog(frame, app);
@@ -141,7 +143,7 @@ fn render_input(frame: &mut Frame, app: &App, area: Rect) {
 
             if suggestions.is_empty() {
                 format!(
-                    ": {}\n\nExamples: sleep 60 | yes | python3 -m http.server 8000 | open -a TextEdit",
+                    ": {}\n\nExamples:\n  sleep 60\n  yes\n  ! python3 -m http.server 8000\n  ! open -a TextEdit",
                     app.command_input
                 )
             } else {
@@ -164,6 +166,15 @@ fn render_input(frame: &mut Frame, app: &App, area: Rect) {
 
     let widget = Paragraph::new(content)
         .block(Block::default().borders(Borders::ALL).title(title))
+        .wrap(Wrap { trim: true });
+
+    frame.render_widget(widget, area);
+}
+
+/// Renders the persistent help bar with always-visible keyboard shortcuts.
+fn render_help(frame: &mut Frame, app: &App, area: Rect) {
+    let widget = Paragraph::new(help_text(app.mode))
+        .block(Block::default().borders(Borders::ALL).title("Help"))
         .wrap(Wrap { trim: true });
 
     frame.render_widget(widget, area);
@@ -296,5 +307,18 @@ fn format_sort_mode(sort_mode: SortMode) -> &'static str {
         SortMode::PidAsc => "PID",
         SortMode::CpuDesc => "CPU",
         SortMode::MemoryDesc => "Memory",
+    }
+}
+
+fn help_text(mode: UiMode) -> &'static str {
+    match mode {
+        UiMode::Normal => {
+            "q quit | r refresh | j/k move | d kill | / filter | : command mode | ! terminal launch | s sort"
+        },
+        UiMode::Filter => "Type to filter | Enter apply | Backspace delete | Esc cancel",
+        UiMode::Command => {
+            "Type command | prefix with ! for terminal launch | Tab autocomplete | Enter run | Esc cancel"
+        },
+        UiMode::ConfirmKill => "y confirm kill | n cancel | Esc cancel",
     }
 }

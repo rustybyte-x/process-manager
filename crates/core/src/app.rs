@@ -68,6 +68,9 @@ pub struct App {
     /// The active process list sort mode.
     pub sort_mode: SortMode,
 
+    /// The default help message showing usable shortcuts.
+    pub help: String,
+
     /// The current status message shown by the UI.
     pub status: String,
 
@@ -102,12 +105,13 @@ impl App {
             command_input: String::new(),
             mode: UiMode::Normal,
             sort_mode: SortMode::NameAsc,
-            status: String::from(
-                "r refresh | d kill | / filter | : command | Tab autocomplete | q quit",
+            help: String::from(
+                "q quit | r refresh | j/k move | d kill | / filter | : command | ! terminal | Tab autocomplete"
             ),
+            status: String::from("ready"),
             status_level: StatusLevel::Info,
             auto_refresh: true,
-            refresh_interval: Duration::from_secs(2),
+            refresh_interval: Duration::from_secs(5),
             last_refresh: Instant::now(),
         }
     }

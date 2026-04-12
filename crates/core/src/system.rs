@@ -1,6 +1,13 @@
+use std::process::{Command, Stdio};
+
 use sysinfo::{Pid, Signal, System};
 
-use crate::{command::CommandLine, error::Error, manager::ProcessManager, process::ProcessEntry};
+use crate::{
+    command::{CommandLine, CommandMode},
+    error::Error,
+    manager::ProcessManager,
+    process::ProcessEntry,
+};
 
 /// Default system-backed implementation of [`ProcessManager`].
 ///
@@ -22,7 +29,9 @@ impl SystemProcessManager {
 
 impl ProcessManager for SystemProcessManager {
     fn list_processes(&mut self) -> Result<Vec<ProcessEntry>, Error> {
-        self.system.refresh_all();
+        // Prefer a process-specific refresh over refresh_all() to keep
+        // the TUI lighter during periodic updates.
+        self.system.refresh_processes();
 
         let mut processes: Vec<ProcessEntry> = self
             .system
@@ -57,15 +66,107 @@ impl ProcessManager for SystemProcessManager {
         }
     }
 
-    /// Starts a new child process without blocking the TUI.
-    ///
-    /// The spawned process is detached from the application's control flow
-    /// after creation. Errors reported here indicate startup failures only.
-    fn start_process(&mut self, command: &CommandLine) -> Result<(), Error> {
-        std::process::Command::new(&command.program)
-            .args(&command.args)
-            .spawn()?;
+    fn start_process(&mut self, command: &CommandLine) -> Result<u32, Error> {
+        match command.mode {
+            CommandMode::Background => {
+                let child = Command::new(&command.program)
+                    .args(&command.args)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()?;
 
-        Ok(())
+                Ok(child.id())
+            }
+
+            CommandMode::Terminal => {
+                #[cfg(target_os = "windows")]
+                {
+                    let command_line = join_command_line(command);
+
+                    let child = Command::new("cmd")
+                        .args(["/C", "start", "", &command_line])
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .spawn()?;
+
+                    return Ok(child.id());
+                }
+
+                #[cfg(target_os = "macos")]
+                {
+                    let command_line = join_command_line(command);
+                    let shell_command = format!("/bin/zsh -lc {}", shell_quote(&command_line));
+
+                    let apple_script = format!(
+                        r#"
+                            tell application "Terminal"
+                            if (count of windows) = 0 then
+                                do script "{}"
+                            else
+                                do script "{}" in front window
+                            end if
+                                activate
+                            end tell
+                        "#,
+                        escape_applescript_string(&shell_command),
+                        escape_applescript_string(&shell_command),
+                    );
+
+                    let child = Command::new("osascript")
+                        .args(["-e", &apple_script])
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .spawn()?;
+
+                    return Ok(child.id());
+                }
+
+                #[cfg(target_os = "linux")]
+                {
+                    let command_line = join_command_line(command);
+
+                    let child = Command::new("x-terminal-emulator")
+                        .args(["-e", &command_line])
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .spawn()?;
+
+                    return Ok(child.id());
+                }
+
+                #[allow(unreachable_code)]
+                Err(Error::OperationFailed(
+                    "terminal launch is not supported on this platform".to_string(),
+                ))
+            }
+        }
     }
+}
+
+/// Builds a single shell-style command line from program and arguments.
+///
+/// This is primarily used when launching commands through a terminal wrapper
+/// such as `cmd`, AppleScript, or a terminal emulator.
+fn join_command_line(command: &CommandLine) -> String {
+    std::iter::once(command.program.as_str())
+        .chain(command.args.iter().map(|arg| arg.as_str()))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Escapes a string for safe embedding inside a single-quoted shell string.
+///
+/// Example:
+/// `hello'world` becomes `'hello'"'"'world'`
+fn shell_quote(input: &str) -> String {
+    format!("'{}'", input.replace('\'', r#"'\"'\"'"#))
+}
+
+/// Escapes double quotes and backslashes for AppleScript string literals.
+fn escape_applescript_string(input: &str) -> String {
+    input.replace('\\', r#"\\"#).replace('"', r#"\""#)
 }

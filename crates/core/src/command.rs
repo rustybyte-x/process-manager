@@ -1,4 +1,16 @@
-/// A parsed command line consisting of a program and its arguments.
+/// Describes how a parsed command should be launched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandMode {
+    /// Start the process in the background without attaching it to the TUI's
+    /// standard input, output, or error streams.
+    Background,
+
+    /// Start the process in a separate terminal window.
+    Terminal,
+}
+
+/// A parsed command line consisting of a program, its arguments,
+/// and the desired launch mode.
 ///
 /// This type provides a structured representation of a command that can
 /// be passed to a [`ProcessManager`](crate::manager::ProcessManager)
@@ -10,68 +22,100 @@ pub struct CommandLine {
 
     /// The argument list passed to the executable.
     pub args: Vec<String>,
+
+    /// The mode used to launch the command.
+    pub mode: CommandMode,
 }
 
 impl CommandLine {
     /// Parses a raw command string into a [`CommandLine`].
+    ///
+    /// Supported forms:
+    ///
+    /// - `sleep 60` → background mode
+    /// - `! python3 -m http.server 8000` → terminal mode
     ///
     /// The current implementation uses whitespace splitting and therefore
     /// does not support shell-style quoting or escaping.
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::InvalidCommand`] if the input does not
-    /// contain a program name.
+    /// Returns [`crate::error::Error::InvalidCommand`] if no executable
+    /// could be parsed from the input.
     pub fn parse(input: &str) -> Result<Self, crate::error::Error> {
-        let parts: Vec<&str> = input.split_whitespace().collect();
+        let mut parts = input.split_whitespace();
 
-        if parts.is_empty() {
-            return Err(crate::error::Error::InvalidCommand);
-        }
+        let first = parts.next().ok_or(crate::error::Error::InvalidCommand)?;
+
+        let (mode, program) = if first == "!" {
+            let program = parts.next().ok_or(crate::error::Error::InvalidCommand)?;
+
+            (CommandMode::Terminal, program)
+        } else {
+            (CommandMode::Background, first)
+        };
+
+        let args = parts.map(|part| part.to_string()).collect();
 
         Ok(Self {
-            program: parts[0].to_string(),
-            args: parts[1..].iter().map(|part| part.to_string()).collect(),
+            program: program.to_string(),
+            args,
+            mode,
         })
     }
 }
 
-/// Returns a small set of built-in command suggestions for the command mode.
+/// Returns a small set of built-in command suggestions for command mode.
 ///
-/// These suggestions are intentionally conservative and are meant to improve
-/// usability for common demo and testing workflows.
-///
-/// The function matches only on the first token because command completion
-/// should complete the executable name, not arbitrary arguments.
+/// Suggestions intentionally focus on common demo and testing commands.
+/// Completion is limited to the executable part of the command to avoid
+/// rewriting user-provided arguments unexpectedly.
 pub fn suggest_commands(input: &str) -> Vec<&'static str> {
     const KNOWN_COMMANDS: &[&str] = &["sleep", "yes", "python3", "open", "ping"];
 
     let trimmed = input.trim_start();
 
-    // If the user has already entered arguments, we no longer try to
-    // autocomplete the executable name.
-    if trimmed.contains(' ') {
+    // Support both:
+    // - "py"
+    // - "! py"
+    let executable_prefix = if let Some(rest) = trimmed.strip_prefix('!') {
+        rest.trim_start()
+    } else {
+        trimmed
+    };
+
+    // Only autocomplete the executable name, not argument lists.
+    if executable_prefix.contains(' ') {
         return Vec::new();
     }
 
     KNOWN_COMMANDS
         .iter()
         .copied()
-        .filter(|candidate| candidate.starts_with(trimmed))
+        .filter(|candidate| candidate.starts_with(executable_prefix))
         .collect()
 }
 
 /// Returns the best matching command completion for the given input.
 ///
-/// If there is exactly one matching executable prefix, that suggestion
-/// is returned. Otherwise `None` is returned to avoid surprising input
-/// replacements.
+/// If exactly one executable matches the current prefix, the completed
+/// command string is returned. Otherwise `None` is returned to avoid
+/// surprising replacements.
 pub fn complete_command(input: &str) -> Option<String> {
+    let trimmed = input.trim_start();
+    let terminal_mode = trimmed.starts_with('!');
+
     let suggestions = suggest_commands(input);
 
-    if suggestions.len() == 1 {
-        Some(suggestions[0].to_string())
+    if suggestions.len() != 1 {
+        return None;
+    }
+
+    let completed = suggestions[0];
+
+    if terminal_mode {
+        Some(format!("! {completed}"))
     } else {
-        None
+        Some(completed.to_string())
     }
 }
