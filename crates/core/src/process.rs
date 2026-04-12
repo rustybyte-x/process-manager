@@ -6,6 +6,9 @@ pub struct ProcessEntry {
     /// The operating system process ID.
     pub pid: u32,
 
+    /// A lowercase copy of the process name used for case-insensitive filtering.
+    pub search_name: String,
+
     /// The display name of the process.
     pub name: String,
 

@@ -111,7 +111,7 @@ impl App {
             status: String::from("ready"),
             status_level: StatusLevel::Info,
             auto_refresh: true,
-            refresh_interval: Duration::from_secs(5),
+            refresh_interval: Duration::from_secs(4),
             last_refresh: Instant::now(),
         }
     }
@@ -245,7 +245,7 @@ impl App {
             .enumerate()
             .filter(|(_, process)| {
                 needle.is_empty()
-                    || process.name.to_lowercase().contains(&needle)
+                    || process.search_name.contains(&needle)
                     || process.pid.to_string().contains(&needle)
             })
             .map(|(index, _)| index)
