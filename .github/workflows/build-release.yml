@@ -6,12 +6,16 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    name: Build binaries
+    name: Build binaries (${{ matrix.os }}, ${{ matrix.target }}, ${{ matrix.name }})
     runs-on: ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -35,26 +39,38 @@ jobs:
             ext: ""
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }} -p process-manager
 
-      - name: Package
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          mkdir dist
-          cp target/${{ matrix.target }}/release/pm${{ matrix.ext }} dist/
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target/${{ matrix.target }}/release/pm${{ matrix.ext }} dist/
+          Compress-Archive -Path dist/pm${{ matrix.ext }} -DestinationPath dist/pm-${{ matrix.name }}.zip -Force
 
+      - name: Package (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/pm${{ matrix.ext }} dist/
           cd dist
           zip pm-${{ matrix.name }}.zip pm${{ matrix.ext }}
 
-      - name: Upload to Release
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: dist/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
