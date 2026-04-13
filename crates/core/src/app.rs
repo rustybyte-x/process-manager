@@ -68,9 +68,6 @@ pub struct App {
     /// The active process list sort mode.
     pub sort_mode: SortMode,
 
-    /// The default help message showing usable shortcuts.
-    pub help: String,
-
     /// The current status message shown by the UI.
     pub status: String,
 
@@ -85,6 +82,12 @@ pub struct App {
 
     /// Timestamp of the most recent successful refresh.
     pub last_refresh: Instant,
+
+    /// Timestamp of the most recent successful manual refresh.
+    pub last_manual_refresh: Instant,
+
+    /// Minimum time between manual refresh requests.
+    pub manual_refresh_cooldown: Duration,
 }
 
 impl Default for App {
@@ -105,14 +108,13 @@ impl App {
             command_input: String::new(),
             mode: UiMode::Normal,
             sort_mode: SortMode::NameAsc,
-            help: String::from(
-                "q quit | r refresh | j/k move | d kill | / filter | : command | ! terminal | Tab autocomplete"
-            ),
             status: String::from("ready"),
             status_level: StatusLevel::Info,
             auto_refresh: true,
             refresh_interval: Duration::from_secs(4),
             last_refresh: Instant::now(),
+            last_manual_refresh: Instant::now() - Duration::from_secs(5),
+            manual_refresh_cooldown: Duration::from_millis(750),
         }
     }
 
@@ -198,6 +200,16 @@ impl App {
         self.last_refresh = Instant::now();
     }
 
+    /// Returns whether a manual refresh is currently allowed.
+    pub fn can_manual_refresh(&self) -> bool {
+        self.last_manual_refresh.elapsed() >= self.manual_refresh_cooldown
+    }
+
+    /// Marks the current time as the last successful manual refresh.
+    pub fn mark_manual_refresh(&mut self) {
+        self.last_manual_refresh = Instant::now();
+    }
+
     /// Sets the current status message and its semantic level.
     pub fn set_status(&mut self, level: StatusLevel, message: impl Into<String>) {
         self.status_level = level;
@@ -273,7 +285,7 @@ impl App {
     fn sort_processes(&self, processes: &mut [ProcessEntry]) {
         match self.sort_mode {
             SortMode::NameAsc => {
-                processes.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                processes.sort_by(|a, b| a.search_name.cmp(&b.search_name));
             }
             SortMode::PidAsc => {
                 processes.sort_by(|a, b| a.pid.cmp(&b.pid));

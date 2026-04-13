@@ -23,10 +23,16 @@ pub fn dispatch(
         }
 
         Action::Refresh => {
+            if !app.can_manual_refresh() {
+                return Ok(());
+            }
+
             let processes = process_manager.list_processes()?;
             let count = processes.len();
+
             app.set_processes(processes);
             app.mark_refreshed();
+            app.mark_manual_refresh();
             app.set_status(StatusLevel::Info, format!("{count} processes loaded"));
         }
 
